@@ -1,144 +1,125 @@
 from Prop import Prop
 from Cell import Cell
-import datetime
-import time
 from struct import *
 
-def readbytes(contents, address, bytenum):
-    result = 0
-    i = bytenum-1
-    while i >= 0:
-        result = result + int(contents[address+i])*256**i
-        i -= 1
-    return result
 
-def signed_int(integer, bytenum):
-    if integer > ((256**bytenum)-1)//2:
-        integer = integer - (256**bytenum)
-    return integer
-
-nFile = input("Input cell file: ")
+#read dat file
+nFile = input("Input cell.dat file: ")
 hFile = open(nFile, 'rb')
 cFile = hFile.read()
-fileLen = len(cFile)
-fileLocation = 0x00
 hFile.close()
 
+#read idx file
 idxName = nFile[:-3]+'idx'
 hIdx = open(idxName, 'rb')
 cIdx = hIdx.read()
 hIdx.close()
 
+#Parse IDX header
+(IDXLength, #0
+ IDXunk1, #4
+ IDXEnd, #8
+ IDXunk2, #C
+ IDXunk3, #10
+ IDXunk4, #14
+ IDXunk5, #18
+ IDXunk6, #1C
+ IDXunk7, #20
+ IDXunk8, #24
+ IDXunk9, #28
+ IDXunk10, #2C
+ IDXunk11, #30
+ IDXunk12, #34
+ IDXunk13, #38
+ IDXunk14, #3C  
+ IDXunk15, #40
+ IDXunk16, #44
+ IDXStart, #48
+ IDXunk18, #4C
+ IDXunk19, #50
+ IDXunk20, #54
+ IDXunk21, #58
+ IDXunk22, #5C
+ IDXunk23, #60
+ IDXunk24, #64
+ IDXunk25, #68
+ IDXunk26, #6C
+ IDXunk27, #70
+ IDXunk28, #74
+ IDXunk29, #78
+ IDXunk30 #7C
+) = unpack('IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII', cIdx[0:0x80])
+
+
+
 cells = []
-IDX_START = 0x200
-BLOCK_OFFSET = 0x1C
+
+DAT_START = 0x200
+IDX_START = IDXStart
+
+#Section header length
+IDX_OFFSET = 0x12
 
 
-cIdx = cIdx[IDX_START+BLOCK_OFFSET:]
-loc = IDX_START+BLOCK_OFFSET
-block = 0
-#print(type(cIdx))
-while len(cIdx) > 13 and int(cIdx[13]) < 0xFA: #Sanity check? What else can be done?
-    address = readbytes(cIdx, 0, 4)
-    #print(hex(address), hex(loc))
+BlockStart = IDXStart
 
-    print(hex(address), hex(loc))
-    if address == 0 or address == IDX_START or cFile[address] != 0xFA:
-        block += 1
-        newloc = (block+1)*0x400 + BLOCK_OFFSET
-        #print(newloc)
-        dif = newloc-loc
-        loc = newloc
-        cIdx = cIdx[dif:]
-        
-        #print('hi')
-        #cIdx = cIdx[0x22:]
-        #loc+=0x22
-        continue
-    data1, x, z = unpack('Hhh', cIdx[4:10])
+#Loop at least once, and stop when next block is at 0 (end of index)
+while True:
+    forward, backward, entries, entrieslength = unpack('<IIHH', cIdx[BlockStart:BlockStart+12])
+    loc = BlockStart + IDX_OFFSET
+    print("Reading %s index entries from index block %s" % (entries, hex(BlockStart)))
 
+    #Get entries until entry limit
+    for entrycount in range(0, entries):
+        address, data1, x, z = unpack("IHhh", cIdx[loc:loc+10])
+        length = unpack('I', cFile[address+2:address+6])[0]
+
+        #Entries whose data length are 0x0E contain no data
+        if length != 0x0E:
+            cells.append( Cell(data1, x, z, address, loc, length) )
+
+        #Each index entry is 10 bytes long
+        loc += 10
+
+    if forward == 0x00000000:
+        break
     
-
-    try:
-        length = unpack('I', cFile[address+2:address+6])[0] #4 Byte Unsigned Int
-    except:
-        pass
-        #print(hex(address), hex(loc))
-        #quit()
-    #print(length)
-    if length != 0x0E:
-        cells.append( Cell(data1, x, z, address, loc, length) )
-    else:
-        if cFile[address+0xE] == 0xFA:
-            length = length = unpack('I', cFile[address+0x0E+2:address+0x0E+6])[0]
-            cells.append( Cell(data1, x, z, address+0x0E, loc, length) ) 
-    cIdx = cIdx[10:]
-    loc += 10
-#print(hex(cIdx[13]))
-#print(hex(loc))
-for c in cells:
-    if c.data1 > 1:
-        c.Details()
-
-for i in range(len(cells)-1, -1 ,-1):
-    c = cells[i]
-    #print(hex(c.location))
-    try:
-        if cFile[c.address+2] == 0x0E:
-            rip = cells.pop(i)
-            #print("ignoring %s" % hex(rip.location))
-            #print("removed", cells.pop(i).address)
-    except:
-        cells.pop(i)
+    BlockStart = forward
 
 
 ##for c in cells:
 ##    c.Details()
-print()
+
+#AW4 and before use utf-8
+STRING_ENCODING = 'utf-16'
 
 props = []
 for c in cells:
     sectionStart = c.address
-    start = sectionStart
-    sectionLength = readbytes(cFile, sectionStart+2, 4)
+    FAFA, sectionLength, sectionEntryLength = unpack('<HII', cFile[sectionStart:sectionStart+10])
+
+    objectStart = sectionStart+0x0A
     
-    #Run until it seems like that was the last object in the section
+    #Find at least one object, and stop when it goes beyond the length of the section
     while True:
-
-        if start <= 0:
-            break
-        
-        #obtype = readbytes(cFile, start+0x0A, 4)
+    
         (obtype, data1, data2, user, time, obj_x, obj_y, data3, obj_z,
-         yaw, tilt, roll, name_len, desc_len, action_len, data_len) = unpack( 'IIIIIhhhhhhhBBBH', cFile[ start+0x0A : start+0x32+2-2 ] )
-
-        try:
-            time_built = datetime.datetime.fromtimestamp(time).strftime('%Y-%m-%d %H:%M:%S')
-        except:
-            print(hex(c.location))
-        print(obtype, data1, data2, user, time, obj_x, obj_y, data3, obj_z,
-         yaw, tilt, roll, name_len, desc_len, action_len, data_len)
-        print(hex(c.address))
-        namestart = start+0x31
-        print(hex(namestart))
-        name = cFile[namestart:
-                     namestart+name_len
-                     ].decode("utf-8")
+         yaw, tilt, roll, name_len, desc_len, action_len, data_len) = unpack( '<IIIIIhhhhhhhHHHH', cFile[ objectStart : objectStart+0x2A ] )
+        
+        namestart = objectStart+0x2A
+        name = cFile[ namestart : namestart+name_len ].decode(STRING_ENCODING)
+        
         descstart = namestart + name_len
-        desc = cFile[descstart:
-                     descstart+desc_len
-                     ].decode("utf-8")
+        desc = cFile[ descstart : descstart+desc_len ].decode(STRING_ENCODING)
+        
         actionstart = descstart + desc_len
-        action = cFile[actionstart:
-                       actionstart+action_len
-                       ].decode("utf-8")
+        action = cFile[ actionstart : actionstart+action_len ].decode(STRING_ENCODING)
+        
         datastart = actionstart+action_len
         data = cFile[datastart:data_len]
+        #Convert data binary data to a string of hex. That's how propdumps work.
         data = ''.join('%02x' % x for x in cFile[datastart:datastart+data_len])
-        data = ''
-
         
-
         p = Prop(
             user = user,
             time = time,
@@ -149,20 +130,21 @@ for c in cells:
             tilt = tilt,
             roll = roll,
             proptype = obtype,
-            data = (name, desc, action, data) #!!!
+            data = (name, desc, action, data) 
             )
         props.append(p)
 
-        if datastart+data_len < sectionStart + sectionLength - 2:
-            #Set it up to read a new object
-            start = datastart+data_len-10
-        else:
-            #No more objects in this section
+        #Set up to read a new object
+        objectStart = datastart+data_len
+        
+        if objectStart >= sectionStart+sectionLength:
+            #Exit if that was the last object
             break
 
+##
+##for p in props:
+##    p.Details()
 
-for p in props:
-    p.Details()
 
 #Remove duplicate objects
 uniqueprops = []
@@ -185,20 +167,17 @@ for i in range(len(props)-1, -1, -1):
             break
     
     completed += 1
-    if completed % 100 == 0:
+    if completed % 1000 == 0:
         percent = (completed/totallen)*100
-        #print("%.1f percent complete" % percent)
-            
+        print("%.1f percent complete" % percent)
+print("%s props in total." % len(uniqueprops))
+#Uniques have been stored un uniqueprops
+#Removed props are in props
 
-
-#uniqueprops=uniqueprops[:1000]
 
 
 #Make propdump
 from Propdump import Propdump
-##for i in range(len(props)-1, -1, -1):
-##    if props[i].proptype != 0:
-##        props.pop(i)
 pd = Propdump()
 pd.objects = uniqueprops
 pd.Output('dump.txt')
