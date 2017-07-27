@@ -112,9 +112,12 @@ for kek in range(0, CELLS_TO_COMBINE):
         
         #Find at least one object, and stop when it goes beyond the length of the section
         while True:
-        
-            (obtype, data1, data2, user, time, obj_x, obj_y, obj_z,
+            (obtype, data1, data2, user, time, obj_x, obj_y, obj_z, 
              yaw, tilt, roll, name_len, desc_len, action_len, data_len) = unpack( OBJECT_ENCODING, cFile[ objectStart : objectStart+OBJECT_ENCODING_SIZE ] )
+
+            if obtype not in range(0, 7):
+                print("Junk object data found. Skipping %s" % hex(objectStart))
+                break
             
             namestart = objectStart+OBJECT_ENCODING_SIZE
             name = cFile[ namestart : namestart+name_len ].decode(STRING_ENCODING)
