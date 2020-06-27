@@ -6,7 +6,9 @@ class Propdump():
     def Output(self, nFile):
         hFile = open(nFile, 'wb')
         hFile.write(b'propdump version 5\r\n')
+        names = set()
         for ob in self.objects:
+            names.add(ob.name+'.zip')
 
             datalen = len(ob.data)//2
             namelen = len(ob.name)
@@ -35,5 +37,6 @@ class Propdump():
 
 
             hFile.write(line)
+        #print(names)
             
             
