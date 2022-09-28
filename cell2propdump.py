@@ -91,7 +91,7 @@ def ApplyCells(cellProps, databasePath, AWVer):
         OBJECT_ENCODING = '<IIIIIhihhhhHHHH'
         OBJECT_ENCODING_SIZE = 0x2A
     elif AWVer == 4:
-        STRING_ENCODING = 'latin-1'
+        STRING_ENCODING = 'windows-1252'
         OBJECT_ENCODING = '<IIIIIhihhhhBBBH'
         OBJECT_ENCODING_SIZE = 0x27
 
@@ -144,9 +144,8 @@ def ApplyCells(cellProps, databasePath, AWVer):
 
 
             if not action.isascii() or not desc.isascii() or not name.isascii():
-                print(f'skipping {name}; {desc}; {action}')
-            else:
-                props.append(p)
+                print(f'notice (but likely valid) {name}; {desc}; {action}')
+            props.append(p)
 
             #Set up to read a new object
             objectStart = datastart+data_len
